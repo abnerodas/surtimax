@@ -352,7 +352,8 @@ export const DEFAULT_SETTINGS = {
   storeName: 'Mi Tienda',
   currency: 'Bs.',
   warnDays: 30,
-  autoCatalog: true
+  autoCatalog: true,
+  password: 'ArizbetH00'
 }
 
 export async function getSettings() {

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, daysUntil } from '../db'
 import { useSettings, money, fmtDate } from '../utils'
-import { Modal, Confirm, Field, EmptyState, Badge, useToast } from '../ui'
+import { Modal, PasswordModal, Field, EmptyState, Badge, useToast } from '../ui'
 import I from '../icons'
 
 const emptyProduct = { name: '', categoryId: null, barcode: '', costPrice: '', salePrice: '', stock: 0, minStock: 0, expiryDate: '', unit: 'und' }
@@ -13,9 +13,9 @@ export default function Inventory() {
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('all')
   const [editing, setEditing] = useState(null)
-  const [deleting, setDeleting] = useState(null)
   const [adjusting, setAdjusting] = useState(null)
   const [adjustDelta, setAdjustDelta] = useState(1)
+  const [passAsk, setPassAsk] = useState(null)
 
   const products = useLiveQuery(() => db.products.toArray(), [])
   const categories = useLiveQuery(() => db.categories.toArray(), [])
@@ -64,18 +64,24 @@ export default function Inventory() {
     setEditing(null)
   }
 
-  const confirmDelete = async () => {
-    await db.products.delete(deleting.id)
+  const askPass = (title, onOk) => setPassAsk({ title, onOk })
+
+  const deleteProduct = async (p) => {
+    await db.products.delete(p.id)
     toast('Producto eliminado')
   }
 
-  const applyAdjust = async () => {
+  const applyAdjust = () => {
     const delta = Number(adjustDelta)
     if (!delta) return
     const p = adjusting
-    await db.products.update(p.id, { stock: Math.max(0, p.stock + delta) })
-    toast(delta > 0 ? `+${delta} unidades a ${p.name}` : `${delta} unidades a ${p.name}`)
-    setAdjusting(null)
+    const doAdjust = async () => {
+      await db.products.update(p.id, { stock: Math.max(0, p.stock + delta) })
+      toast(delta > 0 ? `+${delta} unidades a ${p.name}` : `${delta} unidades a ${p.name}`)
+      setAdjusting(null)
+    }
+    if (delta < 0) askPass('Restar stock', doAdjust)
+    else doAdjust()
   }
 
   const stockTone = (p) => {
@@ -135,7 +141,7 @@ export default function Inventory() {
                         <div className="t-actions">
                           <button className="btn btn-ghost btn-sm" title="Ajustar stock" onClick={() => { setAdjusting(p); setAdjustDelta(1) }}>{I.refresh} Stock</button>
                           <button className="btn btn-ghost btn-sm" title="Editar" onClick={() => openEdit(p)}>{I.edit}</button>
-                          <button className="btn btn-ghost btn-sm" style={{ color: '#fb7185' }} title="Eliminar" onClick={() => setDeleting(p)}>{I.trash}</button>
+                          <button className="btn btn-ghost btn-sm" style={{ color: '#fb7185' }} title="Eliminar (requiere contraseña)" onClick={() => askPass('Eliminar producto', () => deleteProduct(p))}>{I.trash}</button>
                         </div>
                       </td>
                     </tr>
@@ -202,6 +208,9 @@ export default function Inventory() {
               <input className="input" type="number" step="1" autoFocus value={adjustDelta} onChange={(e) => setAdjustDelta(e.target.value)} style={{ width: 160 }} />
             </Field>
           </div>
+          {Number(adjustDelta) < 0 && (
+            <p className="hint" style={{ marginTop: 10, color: '#fbbf24' }}>{I.lock} Las salidas de stock requieren la contraseña de seguridad.</p>
+          )}
           <div className="form-actions">
             <button className="btn btn-ghost" onClick={() => setAdjusting(null)}>Cancelar</button>
             <button className="btn btn-primary" onClick={applyAdjust} disabled={!Number(adjustDelta)}>Aplicar</button>
@@ -209,13 +218,12 @@ export default function Inventory() {
         </Modal>
       )}
 
-      {deleting && (
-        <Confirm
-          danger
-          title="Eliminar producto"
-          message={`¿Seguro que deseas eliminar "${deleting.name}"? Esta acción no se puede deshacer.`}
-          onConfirm={confirmDelete}
-          onClose={() => setDeleting(null)}
+      {passAsk && (
+        <PasswordModal
+          title={passAsk.title}
+          hint={passAsk.title === 'Eliminar producto' ? 'Se eliminará este producto del inventario. Esta acción requiere la contraseña de seguridad.' : 'Las salidas de stock requieren la contraseña de seguridad.'}
+          onSuccess={passAsk.onOk}
+          onClose={() => setPassAsk(null)}
         />
       )}
     </>

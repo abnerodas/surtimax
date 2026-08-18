@@ -1,5 +1,6 @@
 import { useEffect, useState, createContext, useContext } from 'react'
 import I from './icons'
+import { useSettings } from './utils'
 
 export function Modal({ title, onClose, children, wide }) {
   useEffect(() => {
@@ -55,6 +56,43 @@ export function ToastProvider({ children }) {
         ))}
       </div>
     </ToastCtx.Provider>
+  )
+}
+
+export function PasswordModal({ title, hint, onSuccess, onClose }) {
+  const { settings } = useSettings()
+  const [value, setValue] = useState('')
+  const [error, setError] = useState(false)
+  const submit = (e) => {
+    e.preventDefault()
+    if (!settings.password || value === settings.password) {
+      onSuccess?.()
+      onClose()
+    } else {
+      setError(true)
+      setValue('')
+    }
+  }
+  return (
+    <Modal title={title || 'Contraseña requerida'} onClose={onClose}>
+      <form onSubmit={submit}>
+        <p className="muted" style={{ fontSize: 14, lineHeight: 1.6 }}>{hint || 'Esta acción requiere la contraseña de seguridad de la tienda.'}</p>
+        <input
+          className="input"
+          type="password"
+          autoFocus
+          placeholder="Contraseña"
+          value={value}
+          onChange={(e) => { setValue(e.target.value); setError(false) }}
+          style={{ marginTop: 12, borderColor: error ? '#fb7185' : undefined }}
+        />
+        {error && <p className="hint" style={{ marginTop: 6, color: '#fb7185' }}>Contraseña incorrecta, inténtalo de nuevo.</p>}
+        <div className="form-actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button type="submit" className="btn btn-primary" disabled={!value}>{I.lock} Verificar</button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 

@@ -27,7 +27,8 @@ export default function Settings() {
       storeName: e.target.storeName.value.trim(),
       currency: e.target.currency.value,
       warnDays: Number(e.target.warnDays.value) || 30,
-      autoCatalog: e.target.autoCatalog.checked
+      autoCatalog: e.target.autoCatalog.checked,
+      password: e.target.password.value.trim()
     })
     setSaving(false)
     toast('Configuración guardada')
@@ -133,6 +134,12 @@ export default function Settings() {
                 <div className="hint" style={{ marginTop: 3 }}>Si falta algún producto del catálogo, se agrega solo al abrir la app. Desactívalo cuando quieras controlar tu inventario manualmente.</div>
               </span>
             </label>
+          </div>
+          <div className="full">
+            <Field label="Contraseña de seguridad">
+              <input className="input" type="password" name="password" defaultValue={settings.password} style={{ maxWidth: 240 }} />
+              <div className="hint" style={{ marginTop: 3 }}>Se pide para eliminar productos y restar stock. Si la dejas vacía, estas acciones no pedirán contraseña.</div>
+            </Field>
           </div>
         </div>
         <div className="form-actions">
