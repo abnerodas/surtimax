@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, completeSale, deleteSale } from '../db'
 import { useSettings, money, fmtDateTime } from '../utils'
-import { Confirm, Badge, EmptyState, useToast } from '../ui'
+import { PasswordModal, Badge, EmptyState, useToast } from '../ui'
 import I from '../icons'
 
 const METHODS = ['Efectivo', 'QR']
@@ -14,7 +14,7 @@ export default function Sales({ onlyList }) {
   const [cart, setCart] = useState([])
   const [method, setMethod] = useState('Efectivo')
   const [note, setNote] = useState('')
-  const [deleting, setDeleting] = useState(null)
+  const [passAsk, setPassAsk] = useState(null)
 
   const products = useLiveQuery(() => db.products.toArray(), [])
   const sales = useLiveQuery(() => db.sales.toArray(), [])
@@ -67,9 +67,9 @@ export default function Sales({ onlyList }) {
     })
     .sort((a, b) => a.name.localeCompare(b.name))
 
-  const confirmDeleteSale = async () => {
+  const confirmDeleteSale = async (sale) => {
     try {
-      await deleteSale(deleting.id)
+      await deleteSale(sale.id)
       toast('Venta eliminada y stock restaurado')
     } catch (err) {
       console.error(err)
@@ -182,7 +182,7 @@ export default function Sales({ onlyList }) {
                       <td className="t-right money-strong">{money(s.total, settings)}</td>
                       <td>
                         <div className="t-actions">
-                          <button className="btn btn-ghost btn-sm" style={{ color: '#fb7185' }} title="Eliminar" onClick={() => setDeleting(s)}>{I.trash}</button>
+                          <button className="btn btn-ghost btn-sm" style={{ color: '#fb7185' }} title="Eliminar (requiere contraseña)" onClick={() => setPassAsk({ onOk: () => confirmDeleteSale(s) })}>{I.trash}</button>
                         </div>
                       </td>
                     </tr>
@@ -194,13 +194,12 @@ export default function Sales({ onlyList }) {
         )}
       </div>
 
-      {deleting && (
-        <Confirm
-          danger
+      {passAsk && (
+        <PasswordModal
           title="Eliminar venta"
-          message={`¿Eliminar la venta #${String(deleting.id).padStart(4, '0')} por ${money(deleting.total, settings)}? El stock de los productos será restaurado.`}
-          onConfirm={confirmDeleteSale}
-          onClose={() => setDeleting(null)}
+          hint="La venta se eliminará y el stock de sus productos será restaurado. Esta acción requiere la contraseña de seguridad."
+          onSuccess={passAsk.onOk}
+          onClose={() => setPassAsk(null)}
         />
       )}
     </>

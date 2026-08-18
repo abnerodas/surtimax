@@ -55,8 +55,14 @@ export default function Inventory() {
     }
     if (!data.name) return toast('El nombre es obligatorio', 'error')
     if (f.id) {
-      await db.products.update(f.id, data)
-      toast('Producto actualizado')
+      const prev = await db.products.get(f.id)
+      const doSave = async () => {
+        await db.products.update(f.id, data)
+        toast('Producto actualizado')
+        setEditing(null)
+      }
+      if (data.stock < (prev?.stock ?? 0)) askPass('Bajar stock', doSave)
+      else doSave()
     } else {
       await db.products.add(data)
       toast('Producto agregado al inventario')
