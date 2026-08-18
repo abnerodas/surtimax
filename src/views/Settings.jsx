@@ -11,6 +11,7 @@ export default function Settings() {
   const toast = useToast()
   const { settings, update } = useSettings()
   const [saving, setSaving] = useState(false)
+  const [changing, setChanging] = useState(false)
   const [newCat, setNewCat] = useState('')
   const [catToDelete, setCatToDelete] = useState(null)
   const [confirmReset, setConfirmReset] = useState(false)
@@ -27,11 +28,24 @@ export default function Settings() {
       storeName: e.target.storeName.value.trim(),
       currency: e.target.currency.value,
       warnDays: Number(e.target.warnDays.value) || 30,
-      autoCatalog: e.target.autoCatalog.checked,
-      password: e.target.password.value.trim()
+      autoCatalog: e.target.autoCatalog.checked
     })
     setSaving(false)
     toast('Configuración guardada')
+  }
+
+  const changePass = async (e) => {
+    e.preventDefault()
+    const current = e.target.currentPass.value
+    const nueva = e.target.newPass.value.trim()
+    const confirm = e.target.newPass2.value.trim()
+    if (current !== settings.password) return toast('La contraseña actual no es correcta', 'error')
+    if (nueva !== confirm) return toast('Las contraseñas nuevas no coinciden', 'error')
+    setChanging(true)
+    await update({ password: nueva })
+    setChanging(false)
+    e.target.reset()
+    toast(nueva ? 'Contraseña cambiada correctamente' : 'Protección desactivada')
   }
 
   const addCategory = async () => {
@@ -52,7 +66,7 @@ export default function Settings() {
       db.expenses.toArray(),
       db.settings.toArray()
     ])
-    const backup = { app: 'surtimax', version: 1, exportedAt: new Date().toISOString(), categories: cats, products: prods, sales, saleItems: items, expenses: exps, settings: sst }
+    const backup = { app: 'surtimax', version: 1, exportedAt: new Date().toISOString(), categories: cats, products: prods, sales, saleItems: items, expenses: exps, settings: sst.filter((r) => r.key !== 'password') }
     downloadFile('respaldo-surtimax-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(backup, null, 2), 'application/json')
     toast('Respaldo descargado')
   }
@@ -63,6 +77,7 @@ export default function Settings() {
       try {
         const data = JSON.parse(reader.result)
         if (data.app !== 'surtimax') throw new Error('archivo inválido')
+        const currentPassword = (await db.settings.toArray()).find((r) => r.key === 'password')?.value
         await db.transaction('rw', db.categories, db.products, db.sales, db.saleItems, db.expenses, db.settings, async () => {
           await Promise.all([
             db.categories.clear(),
@@ -80,6 +95,7 @@ export default function Settings() {
             db.expenses.bulkAdd(data.expenses || []),
             db.settings.bulkAdd(data.settings || [])
           ])
+          if (currentPassword) await db.settings.put({ key: 'password', value: currentPassword })
         })
         toast('Respaldo restaurado correctamente')
         location.reload()
@@ -135,17 +151,35 @@ export default function Settings() {
               </span>
             </label>
           </div>
-          <div className="full">
-            <Field label="Contraseña de seguridad">
-              <input className="input" type="password" name="password" defaultValue={settings.password} style={{ maxWidth: 240 }} />
-              <div className="hint" style={{ marginTop: 3 }}>Se pide para eliminar productos y restar stock. Si la dejas vacía, estas acciones no pedirán contraseña.</div>
-            </Field>
-          </div>
         </div>
         <div className="form-actions">
           <button type="submit" className="btn btn-primary" disabled={saving}>{I.save} Guardar cambios</button>
         </div>
       </form>
+
+      <div className="card mb-16">
+        <div className="card-title"><span>{I.lock} Contraseña de seguridad</span></div>
+        <p className="hint" style={{ lineHeight: 1.6, marginBottom: 14 }}>
+          Se pide para eliminar productos y ventas, y para restar stock. Solo puedes cambiarla si conoces la contraseña actual.
+        </p>
+        <form className="form-grid" style={{ maxWidth: 480 }} onSubmit={changePass}>
+          <Field label="Contraseña actual">
+            <input className="input" type="password" name="currentPass" autoComplete="off" />
+          </Field>
+          <Field label="Nueva contraseña">
+            <input className="input" type="password" name="newPass" autoComplete="off" />
+          </Field>
+          <div className="full">
+            <Field label="Confirmar nueva contraseña">
+              <input className="input" type="password" name="newPass2" autoComplete="off" />
+              <div className="hint" style={{ marginTop: 3 }}>Si dejas la nueva contraseña vacía, la protección se desactiva.</div>
+            </Field>
+          </div>
+          <div className="full">
+            <button type="submit" className="btn btn-primary" disabled={changing}>{I.lock} Cambiar contraseña</button>
+          </div>
+        </form>
+      </div>
 
       <div className="card mb-16">
         <div className="card-title"><span>Categorías de productos</span><Badge tone="gray">{categories?.length ?? 0}</Badge></div>
