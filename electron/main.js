@@ -1,8 +1,5 @@
-import { app, BrowserWindow, Menu } from 'electron'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const { app, BrowserWindow, Menu } = require('electron')
+const path = require('node:path')
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -13,7 +10,7 @@ function createWindow() {
     autoHideMenuBar: true,
     backgroundColor: '#070b14',
     title: 'SurtiMax',
-    icon: path.join(__dirname, '..', 'public', 'icon-512.png'),
+    icon: path.join(__dirname, '..', 'dist', 'icon-512.png'),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
