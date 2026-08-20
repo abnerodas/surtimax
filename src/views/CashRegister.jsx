@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, openRegister, closeRegister } from '../db'
-import { useSettings, money, fmtDateTime } from '../utils'
+import { useSettings, money, fmtDateTime, fmtDate } from '../utils'
 import { Modal, Field, Badge, EmptyState, useToast } from '../ui'
 import I from '../icons'
 
@@ -12,12 +12,47 @@ export default function CashRegister() {
   const [counted, setCounted] = useState('')
   const [note, setNote] = useState('')
   const [confirmingClose, setConfirmingClose] = useState(false)
+  const [prodQuery, setProdQuery] = useState('')
 
   const registers = useLiveQuery(() => db.registers.toArray(), [])
   const sales = useLiveQuery(() => db.sales.toArray(), [])
+  const saleItems = useLiveQuery(() => db.saleItems.toArray(), [])
+  const products = useLiveQuery(() => db.products.toArray(), [])
 
   const open = registers?.find((r) => r.status === 'open')
   const history = (registers || []).filter((r) => r.status === 'closed').sort((a, b) => b.id - a.id)
+
+  const today = new Date().toISOString().slice(0, 10)
+  const todaySales = (sales || []).filter((s) => String(s.date).slice(0, 10) === today).sort((a, b) => String(b.date).localeCompare(String(a.date)))
+  const todayIds = new Set(todaySales.map((s) => s.id))
+  const todayItems = (saleItems || []).filter((it) => todayIds.has(it.saleId))
+  const productsSoldToday = todayItems.reduce((a, it) => a + it.qty, 0)
+  const cashToday = todaySales.filter((s) => s.method === 'Efectivo').reduce((a, s) => a + s.total, 0)
+  const qrToday = todaySales.filter((s) => s.method !== 'Efectivo').reduce((a, s) => a + s.total, 0)
+
+  const dateBySale = useMemo(() => {
+    const m = new Map()
+    for (const s of sales || []) m.set(s.id, s.date)
+    return m
+  }, [sales])
+
+  const itemGroups = useMemo(() => {
+    const g = new Map()
+    for (const it of saleItems || []) {
+      if (!g.has(it.productId)) g.set(it.productId, { totalQty: 0, perDate: new Map() })
+      const entry = g.get(it.productId)
+      entry.totalQty += it.qty
+      const d = String(dateBySale.get(it.saleId) || '').slice(0, 10)
+      entry.perDate.set(d, (entry.perDate.get(d) || 0) + it.qty)
+    }
+    return g
+  }, [saleItems, dateBySale])
+
+  const q = prodQuery.trim().toLowerCase()
+  const productResults = (products || [])
+    .filter((p) => !q || p.name.toLowerCase().includes(q) || (p.barcode || '').includes(q))
+    .map((p) => ({ product: p, info: itemGroups.get(p.id) }))
+    .sort((a, b) => a.product.name.localeCompare(b.product.name))
 
   const summary = useMemo(() => {
     if (!open || !sales) return null
@@ -91,19 +126,96 @@ export default function CashRegister() {
         <div className="card">
           <div className="card-title"><span>Resumen de hoy</span></div>
           {(() => {
-            const today = new Date().toISOString().slice(0, 10)
-            const todaySales = (sales || []).filter((s) => String(s.date).slice(0, 10) === today)
-            const cash = todaySales.filter((s) => s.method === 'Efectivo').reduce((a, s) => a + s.total, 0)
-            const qr = todaySales.filter((s) => s.method !== 'Efectivo').reduce((a, s) => a + s.total, 0)
             return (
               <div className="cart-summary" style={{ borderTop: 'none', paddingTop: 0 }}>
-                <div className="cart-row"><span>Ventas en efectivo</span><span className="money" style={{ color: '#34d399' }}>{money(cash, settings)}</span></div>
-                <div className="cart-row"><span>Ventas por QR</span><span className="money" style={{ color: '#7dd3fc' }}>{money(qr, settings)}</span></div>
-                <div className="cart-row total"><span>Total del día</span><span>{money(cash + qr, settings)}</span></div>
+                <div className="cart-row"><span>Ventas en efectivo ({todaySales.filter((s) => s.method === 'Efectivo').length})</span><span className="money" style={{ color: '#34d399' }}>{money(cashToday, settings)}</span></div>
+                <div className="cart-row"><span>Ventas por QR ({todaySales.filter((s) => s.method !== 'Efectivo').length})</span><span className="money" style={{ color: '#7dd3fc' }}>{money(qrToday, settings)}</span></div>
+                <div className="cart-row"><span>Productos vendidos hoy</span><span className="money" style={{ color: '#fbbf24' }}>{productsSoldToday} unid.</span></div>
+                <div className="cart-row total"><span>Total del día</span><span>{money(cashToday + qrToday, settings)}</span></div>
               </div>
             )
           })()}
         </div>
+      </div>
+
+      <div className="card mt-24">
+        <div className="card-title"><span>Ventas del día</span><Badge tone="gray">{todaySales.length} ventas · {productsSoldToday} productos</Badge></div>
+        {todaySales.length === 0 ? (
+          <EmptyState icon={I.cart} title="Sin ventas hoy" text="Las ventas que registres hoy aparecerán aquí con su detalle para cuadrar la caja." />
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Hora</th><th>Método</th><th>Artículos</th><th className="t-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {todaySales.map((s) => {
+                  const items = (saleItems || []).filter((it) => it.saleId === s.id)
+                  return (
+                    <tr key={s.id}>
+                      <td className="t-name">{fmtDateTime(s.date)}</td>
+                      <td><Badge tone={s.method === 'Efectivo' ? 'green' : 'blue'}>{s.method}</Badge></td>
+                      <td><div className="t-sub">{items.map((i) => `${i.qty} × ${i.name}`).join(', ')}</div></td>
+                      <td className="t-right money-strong">{money(s.total, settings)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3} className="t-right"><b>Total del día</b></td>
+                  <td className="t-right money-strong" style={{ color: '#34d399' }}>{money(cashToday + qrToday, settings)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="card mt-24">
+        <div className="card-title"><span>Productos vendidos</span><Badge tone="gray">{productResults.length}</Badge></div>
+        <div className="search mb-16">
+          {I.search}
+          <input className="input" placeholder="Buscar producto… (Ej: oreo)" value={prodQuery} onChange={(e) => setProdQuery(e.target.value)} />
+        </div>
+        {productResults.length === 0 ? (
+          <EmptyState icon={I.box} title="Sin resultados" text="Escribe el nombre de un producto para ver cuánto se ha vendido, en qué fechas y cuánto queda." />
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Producto</th><th className="t-right">Vendido en total</th><th>Fechas de venta</th><th className="t-right">Stock restante</th>
+                </tr>
+              </thead>
+              <tbody>
+                {productResults.map(({ product, info }) => (
+                  <tr key={product.id}>
+                    <td>
+                      <div className="t-name">{product.name}</div>
+                      {product.barcode && <div className="t-sub">Código: {product.barcode}</div>}
+                    </td>
+                    <td className="t-right money" style={{ color: '#7dd3fc' }}>{info ? `${info.totalQty} ${product.unit}` : '0'}</td>
+                    <td>
+                      {info && info.perDate.size > 0 ? (
+                        <div className="t-sub">
+                          {[...info.perDate.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([d, qty]) => `${qty} ${product.unit} · ${fmtDate(d)}`).join('  |  ')}
+                        </div>
+                      ) : (
+                        <span className="muted">Sin ventas</span>
+                      )}
+                    </td>
+                    <td className="t-right">
+                      <Badge tone={product.stock === 0 ? 'red' : product.stock <= product.minStock ? 'amber' : 'green'}>{product.stock} {product.unit}</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="card mt-24">
